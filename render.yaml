@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: forijat-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      - key: DEFAULT_COMMISSION_PERCENT
+        value: "15"
+      - key: NODE_ENV
+        value: production
