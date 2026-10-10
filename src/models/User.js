@@ -13,9 +13,13 @@ const userSchema = new mongoose.Schema(
       nationalIdImageUrl: String,
       ratingAverage: { type: Number, default: 5.0 },
       ratingCount: { type: Number, default: 0 },
+      // ⚠️ لا قيم افتراضية هنا إطلاقاً — أي default على type يُنشئ كائن
+      // GeoJSON ناقصاً { type: 'Point' } بدون coordinates فيصطدم بفهرس
+      // 2dsphere (خطأ 16755). يُضبط الموقع فقط بإحداثيات GPS حقيقية
+      // عبر PATCH /api/v1/auth/location (تمرر type و coordinates معاً).
       location: {
-        type: { type: String, enum: ['Point'], default: 'Point' },
-        coordinates: { type: [Number], default: undefined }, // [longitude, latitude]
+        type: { type: String, enum: ['Point'] },
+        coordinates: { type: [Number] }, // [longitude, latitude]
       },
       isAvailable: { type: Boolean, default: true },
     },

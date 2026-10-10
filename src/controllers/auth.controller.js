@@ -6,7 +6,7 @@ const { signToken } = require('../middleware/auth');
 // POST /api/v1/auth/register
 exports.register = async (req, res, next) => {
   try {
-    const { role, name, phone, password, skills, location, nationalIdImageUrl } = req.body;
+    const { role, name, phone, password, skills, nationalIdImageUrl } = req.body;
     if (!['client', 'technician'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Role must be client or technician' });
     }
@@ -20,12 +20,15 @@ exports.register = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const doc = { role, name, phone, passwordHash };
 
+    // ✅ technicianProfile يُنشأ حصراً للفنيين — العميل والأدمن لا يحملان
+    // هذا الحقل أبداً. ولا نمرر location هنا إطلاقاً — يُضبط لاحقاً عبر
+    // PATCH /api/v1/auth/location بإحداثيات حقيقية، حتى لا يُسنَد للفني
+    // طلبٌ بناءً على موقع افتراضي خاطئ في $geoNear.
     if (role === 'technician') {
       doc.technicianProfile = {
         skills: skills || [],
         nationalIdImageUrl,
         isAvailable: true,
-        ...(location?.coordinates ? { location: { type: 'Point', coordinates: location.coordinates } } : {}),
       };
     }
 
