@@ -45,7 +45,8 @@ exports.createOrder = async (req, res, next) => {
       financials: { inspectionFee: Number(inspectionFee) },
       status: 'pending_payment_proof',
     });
-    res.status(201).json({ success: true, order });
+    // استجابة فورية مؤكدة — لا عمليات جانبية (Sockets / بحث جغرافي) هنا
+    return res.status(201).json({ success: true, message: 'تم إنشاء الطلب بنجاح', order });
   } catch (err) {
     next(err);
   }
