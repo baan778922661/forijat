@@ -1,10 +1,31 @@
 const mongoose = require('mongoose');
 
 /**
- * ملف التقني كمستند فرعي مستقل (Single Nested Subdocument)
- * مع default: undefined — فلا يُنشأ إطلاقاً للعملاء والإداريين،
- * ويقضي ذلك على خطأ 16755 (GeoJSON ناقص يصطدم بفهرس 2dsphere)
- * من جذوره: لا technicianProfile => لا location => لا تعارض مع الفهرس.
+ * نقطة GeoJSON كمستند فرعي مستقل مع default: undefined على الحقل
+ * الحاوي — المفتاح لا يُنشأ إطلاقاً ما لم يُضبط صراحة بإحداثيات
+ * حقيقية. هذا يقضي نهائياً على كل أشكال خطأ 16755:
+ *  - { type: 'Point' } بدون coordinates   (default القديم)
+ *  - { coordinates: [] } بدون type         (تهيئة المصفوفات التلقائية)
+ *  - {} كائن فارغ                           (تهيئة الحقول المتداخلة)
+ */
+const geoPointSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['Point'] },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      default: undefined,
+      validate: {
+        validator: (v) => v == null || (Array.isArray(v) && v.length === 2),
+        message: 'coordinates يجب أن تكون [longitude, latitude]',
+      },
+    },
+  },
+  { _id: false }
+);
+
+/**
+ * ملف الفني كمستند فرعي مستقل مع default: undefined — لا يُنشأ
+ * إطلاقاً للعملاء والإداريين.
  */
 const technicianProfileSchema = new mongoose.Schema(
   {
@@ -12,15 +33,9 @@ const technicianProfileSchema = new mongoose.Schema(
     nationalIdImageUrl: String,
     ratingAverage: { type: Number, default: 5.0 },
     ratingCount: { type: Number, default: 0 },
-    // ⚠️ بلا أي قيم افتراضية — يُضبط فقط بإحداثيات GPS حقيقية عبر
-    // PATCH /api/v1/auth/location (تُمرَّر type و coordinates معاً).
-    // أي default على type هنا يُنشئ { type: 'Point' } بدون إحداثيات
-    // فيعيد خطأ 16755. لا نستخدم إحداثيات افتراضية أيضاً لأنها تُسنِد
-    // للفني طلبات قريبة من نقطة وهمية عبر $geoNear.
-    location: {
-      type: { type: String, enum: ['Point'] },
-      coordinates: { type: [Number] }, // [longitude, latitude]
-    },
+    // ✅ يُضبط فقط عبر PUT /api/v1/technicians/status (زر Online)
+    // أو PATCH /api/v1/auth/location — بكائن { type, coordinates } كامل
+    location: { type: geoPointSchema, default: undefined },
     isAvailable: { type: Boolean, default: true },
   },
   { _id: false }
@@ -30,13 +45,12 @@ const userSchema = new mongoose.Schema(
   {
     role: { type: String, enum: ['client', 'technician', 'admin'], required: true },
     name: { type: String, required: true, trim: true },
-    // trim على مستوى الـ Schema أيضاً: حماية مزدوجة من أي مسار
-    // كتابة مستقبلي قد يتجاوز تنظيف الـ controller
+    // trim على مستوى الـ Schema: حماية مزدوجة من أي فراغات مخفية
     phone: { type: String, unique: true, required: true, index: true, trim: true },
     passwordHash: { type: String, required: true },
     avatarUrl: String,
     isVerified: { type: Boolean, default: false },
-    // ✅ default: undefined — العميل والأدمن لا يحملان هذا الحقل أبداً
+    // ✅ العميل والأدمن لا يحملان هذا الحقل أبداً
     technicianProfile: { type: technicianProfileSchema, default: undefined },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
