@@ -7,18 +7,42 @@ const walletService = require('../services/wallet.service');
 const WARRANTY_DAYS = 14;
 
 // POST /api/v1/orders  (client books: category + location + inspection fee)
+// يقبل serviceType أو serviceCategory، و address أو addressDetails (توافقية).
 exports.createOrder = async (req, res, next) => {
   try {
-    const { serviceCategory, description, longitude, latitude, addressDetails, landmark, inspectionFee } = req.body;
-    if (!serviceCategory || typeof longitude !== 'number' || typeof latitude !== 'number' || !inspectionFee) {
-      return res.status(400).json({ success: false, message: 'serviceCategory, coordinates and inspectionFee are required' });
+    const {
+      serviceCategory, serviceType, description,
+      longitude, latitude, address, addressDetails, landmark, inspectionFee,
+    } = req.body;
+
+    const category = serviceCategory || serviceType;
+    const lng = Number(longitude);
+    const lat = Number(latitude);
+
+    if (!category || !['solar', 'electricity', 'ac', 'plumbing'].includes(category)) {
+      return res.status(400).json({ success: false, message: 'serviceType غير صالح أو مفقود' });
     }
+    // تحقق صارم من الإحداثيات ونطاقاتها الجغرافية
+    if (!Number.isFinite(lng) || !Number.isFinite(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) {
+      return res.status(400).json({ success: false, message: 'إحداثيات الموقع غير صالحة' });
+    }
+    if (!inspectionFee || Number(inspectionFee) <= 0) {
+      return res.status(400).json({ success: false, message: 'inspectionFee مطلوب' });
+    }
+
     const order = await Order.create({
       clientId: req.user._id,
-      serviceCategory,
+      serviceCategory: category,
       description,
-      location: { type: 'Point', coordinates: [longitude, latitude], addressDetails, landmark },
-      financials: { inspectionFee },
+      // الترتيب القياسي لـ MongoDB: [longitude, latitude] — خط الطول أولاً
+      location: {
+        type: 'Point',
+        coordinates: [lng, lat],
+        address: address || addressDetails,
+        addressDetails: addressDetails || address,
+        landmark,
+      },
+      financials: { inspectionFee: Number(inspectionFee) },
       status: 'pending_payment_proof',
     });
     res.status(201).json({ success: true, order });

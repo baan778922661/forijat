@@ -6,10 +6,13 @@ const orderSchema = new mongoose.Schema(
     technicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     serviceCategory: { type: String, enum: ['solar', 'electricity', 'ac', 'plumbing'], required: true },
     description: String,
+    // GeoJSON Point — coordinates إلزامية هنا لذا default 'Point' آمن
+    // (لا يُنشأ الكائن أبداً بدون إحداثيات من مسار إنشاء الطلب).
     location: {
-      type: { type: String, enum: ['Point'], default: 'Point' },
-      coordinates: { type: [Number], required: true }, // [longitude, latitude]
-      addressDetails: String,
+      type: { type: String, enum: ['Point'], default: 'Point', required: true },
+      coordinates: { type: [Number], required: true }, // [longitude, latitude] — خط الطول أولاً
+      address: { type: String, trim: true },
+      addressDetails: String, // توافقية مع الإصدارات السابقة
       landmark: String, // nearest famous landmark (offline-friendly addressing)
     },
     financials: {

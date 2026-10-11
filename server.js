@@ -11,7 +11,17 @@ const app = express();
 
 // ===== Global middleware =====
 app.use(helmet());
-app.use(cors());
+
+// ===== CORS مفعّل بالكامل (يدعم Preflight / OPTIONS صراحة) =====
+const corsOptions = {
+  origin: true, // يعكس أصل الطلب — ملائم للتطوير ولوحة التحكم
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-cron-secret'],
+  optionsSuccessStatus: 204,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // رد صريح على كل طلبات Preflight
 app.use(express.json({ limit: '1mb' })); // bodies are small; images go through multer
 app.use(morgan('tiny'));
 
