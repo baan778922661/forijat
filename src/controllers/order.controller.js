@@ -215,6 +215,77 @@ exports.cancelOrder = async (req, res, next) => {
   }
 };
 
+// GET /api/v1/orders/nearby?maxDistance=20000  (technician: الطلبات القريبة المطابقة لمهاراته)
+exports.nearbyOrders = async (req, res, next) => {
+  try {
+    const loc = req.user.technicianProfile?.location;
+    if (!loc?.coordinates?.length) {
+      return res.status(400).json({ success: false, message: 'حدّث موقعك أولاً عبر PUT /technicians/status' });
+    }
+    const skills = req.user.technicianProfile?.skills || [];
+    const maxDistance = Math.min(Number(req.query.maxDistance) || 20000, 100000);
+    const orders = await Order.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: loc.coordinates },
+          distanceField: 'distanceMeters',
+          maxDistance,
+          spherical: true,
+          query: {
+            status: 'payment_verifying', // معتمدة مالياً وتنتظر الإرسال
+            technicianId: null,
+            ...(skills.length ? { serviceCategory: { $in: skills } } : {}),
+          },
+        },
+      },
+      { $limit: 20 },
+      { $project: { otpVerificationCode: 0 } },
+    ]);
+    res.json({ success: true, orders });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/v1/orders/:id/accept  (قبول ذري — يُسند فقط إن كان بلا فني)
+exports.acceptOrder = async (req, res, next) => {
+  try {
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, status: 'payment_verifying', technicianId: null },
+      { $set: { technicianId: req.user._id, status: 'assigned', otpVerificationCode: otp, otpGeneratedAt: new Date() } },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(409).json({ success: false, message: 'الطلب لم يعد متاحاً — قبِله فني آخر' });
+    }
+    const safe = order.toObject();
+    delete safe.otpVerificationCode; // الرمز للعميل فقط
+    res.json({ success: true, order: safe });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/v1/orders/:id/start  (بدء العمل: assigned → in_progress)
+exports.startJob = async (req, res, next) => {
+  try {
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, technicianId: req.user._id, status: 'assigned' },
+      { $set: { status: 'in_progress' } },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(400).json({ success: false, message: 'لا يمكن بدء الطلب من حالته الحالية' });
+    }
+    const safe = order.toObject();
+    delete safe.otpVerificationCode;
+    res.json({ success: true, order: safe });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ===== Internal helpers used by admin controller =====
 exports.assignNearestTechnician = async (order) => {
   const candidates = await findNearestTechnician(order.location.coordinates, order.serviceCategory);

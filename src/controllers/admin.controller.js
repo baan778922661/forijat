@@ -1,4 +1,5 @@
 const Order = require('../models/Order');
+const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { uploadBuffer } = require('../config/cloudinary');
 const walletService = require('../services/wallet.service');
@@ -105,6 +106,51 @@ exports.rejectWithdrawal = async (req, res, next) => {
   try {
     const tx = await walletService.rejectWithdrawal(req.params.id);
     res.json({ success: true, transaction: tx });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/v1/admin/orders?status=&limit=  (شاشة مراقبة كل الطلبات)
+exports.listOrders = async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    const orders = await Order.find(filter)
+      .populate('clientId', 'name phone')
+      .populate('technicianId', 'name phone')
+      .select('-otpVerificationCode')
+      .sort('-createdAt')
+      .limit(Math.min(Number(req.query.limit) || 100, 200))
+      .lean();
+    res.json({ success: true, orders });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/v1/admin/technicians  (إدارة حسابات الفنيين)
+exports.listTechnicians = async (req, res, next) => {
+  try {
+    const technicians = await User.find({ role: 'technician' })
+      .select('-passwordHash')
+      .sort('-createdAt')
+      .limit(300)
+      .lean();
+    res.json({ success: true, technicians });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/v1/admin/technicians/:id/verify  (تفعيل/تعطيل توثيق الفني)
+exports.toggleVerifyTechnician = async (req, res, next) => {
+  try {
+    const tech = await User.findOne({ _id: req.params.id, role: 'technician' });
+    if (!tech) return res.status(404).json({ success: false, message: 'الفني غير موجود' });
+    tech.isVerified = !tech.isVerified;
+    await tech.save();
+    res.json({ success: true, technician: { _id: tech._id, isVerified: tech.isVerified } });
   } catch (err) {
     next(err);
   }

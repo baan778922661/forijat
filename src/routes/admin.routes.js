@@ -5,6 +5,11 @@ const ctrl = require('../controllers/admin.controller');
 
 router.use(protect, restrictTo('admin'));
 
+// Orders monitoring & technicians management
+router.get('/orders', ctrl.listOrders);
+router.get('/technicians', ctrl.listTechnicians);
+router.patch('/technicians/:id/verify', ctrl.toggleVerifyTechnician);
+
 // Payment-proof review queue (one-tap approve/reject)
 router.get('/orders/payment-queue', ctrl.paymentQueue);
 router.post('/orders/:id/approve', ctrl.approvePayment);

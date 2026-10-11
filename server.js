@@ -28,6 +28,7 @@ app.use(morgan('tiny'));
 // ===== Routes =====
 app.use('/api/v1/health', require('./src/routes/health.routes'));
 app.use('/api/v1/auth', require('./src/routes/auth.routes'));
+app.use('/api/v1/technicians', require('./src/routes/technician.routes'));
 app.use('/api/v1/payment-methods', require('./src/routes/paymentMethod.routes'));
 app.use('/api/v1/orders', require('./src/routes/order.routes'));
 app.use('/api/v1/wallet', require('./src/routes/wallet.routes'));
