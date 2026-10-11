@@ -6,7 +6,10 @@ const { signToken } = require('../middleware/auth');
 // POST /api/v1/auth/register
 exports.register = async (req, res, next) => {
   try {
-    const { role, name, phone, password, skills, nationalIdImageUrl } = req.body;
+    const { role, name, password, skills, nationalIdImageUrl } = req.body;
+    // ✅ trim() لإزالة أي فراغات مخفية — بدونه يُخزَّن الرقم بفراغات
+    // فيفشل login لاحقاً بـ 401 على نفس الرقم الظاهري
+    const phone = String(req.body.phone || '').trim();
     if (!['client', 'technician'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Role must be client or technician' });
     }
@@ -45,7 +48,9 @@ exports.register = async (req, res, next) => {
 // POST /api/v1/auth/login
 exports.login = async (req, res, next) => {
   try {
-    const { phone, password } = req.body;
+    const { password } = req.body;
+    const phone = String(req.body.phone || '').trim(); // نفس التنظيف عند الدخول
+    // passwordHash غير مستثنى من الـ select في الـ Schema — يصل كاملاً هنا
     const user = await User.findOne({ phone });
     if (!user || !(await bcrypt.compare(password || '', user.passwordHash))) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });

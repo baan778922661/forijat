@@ -30,7 +30,9 @@ const userSchema = new mongoose.Schema(
   {
     role: { type: String, enum: ['client', 'technician', 'admin'], required: true },
     name: { type: String, required: true, trim: true },
-    phone: { type: String, unique: true, required: true, index: true },
+    // trim على مستوى الـ Schema أيضاً: حماية مزدوجة من أي مسار
+    // كتابة مستقبلي قد يتجاوز تنظيف الـ controller
+    phone: { type: String, unique: true, required: true, index: true, trim: true },
     passwordHash: { type: String, required: true },
     avatarUrl: String,
     isVerified: { type: Boolean, default: false },
