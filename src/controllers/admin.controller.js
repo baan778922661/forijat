@@ -8,7 +8,8 @@ const orderController = require('./order.controller');
 // GET /api/v1/admin/orders/payment-queue  (receipts awaiting verification)
 exports.paymentQueue = async (req, res, next) => {
   try {
-    const orders = await Order.find({ status: 'payment_verifying' })
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    const orders = await Order.find({ status: 'payment_verifying', 'financials.paymentStatus': { $ne: 'approved' } })
       .populate('clientId', 'name phone')
       .sort('createdAt')
       .limit(100)
@@ -32,10 +33,19 @@ exports.approvePayment = async (req, res, next) => {
       return res.json({ success: true, order, assigned: null });
     }
 
-    // Inspection fee verified: ختم الاعتماد ثم الإسناد الجغرافي (يحفظ status='assigned' بـ await)
+    // 1) الاعتماد يُحفظ دائماً — بغض النظر عن توفر فني حالياً
+    order.financials.paymentStatus = 'approved';
     order.paymentApprovedAt = new Date();
-    const tech = await orderController.assignNearestTechnician(order);
-    res.json({ success: true, order, assigned: tech });
+    const tech = await orderController.assignNearestTechnician(order); // يحفظ 'assigned' عند نجاحه
+    if (tech) {
+      console.log('Order approved & assigned:', order._id.toString(), '->', tech.name);
+      return res.json({ success: true, message: 'تم الاعتماد وإسناد الفني', order, assigned: tech });
+    }
+    // 2) لا فني متاح: حالة وسيطة — الطلب يخرج من الطابور فوراً ولا يعلق أبداً
+    order.status = 'searching_technician';
+    const saved = await order.save();
+    console.log('Order approved, searching technician:', saved._id.toString(), saved.status);
+    return res.json({ success: true, message: 'تم اعتماد الدفع — جارٍ البحث عن فني', order: saved, assigned: null });
   } catch (err) {
     next(err);
   }

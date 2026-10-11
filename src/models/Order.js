@@ -21,6 +21,7 @@ const orderSchema = new mongoose.Schema(
       platformCommissionPercent: { type: Number, default: Number(process.env.DEFAULT_COMMISSION_PERCENT || 15), min: 15, max: 20 },
       platformCommissionAmount: { type: Number, default: 0 },
       technicianPayoutAmount: { type: Number, default: 0 },
+      paymentStatus: { type: String, enum: ['pending', 'approved'], default: 'pending' },
       inspectionPaymentProofUrl: String,
       laborPaymentProofUrl: String,
       sparePartsReceiptUrls: { type: [String], default: [] },
@@ -32,6 +33,7 @@ const orderSchema = new mongoose.Schema(
       enum: [
         'pending_payment_proof',
         'payment_verifying',
+        'searching_technician', // معتمد مالياً — جارٍ البحث عن فني مؤهل
         'assigned',
         'in_progress',
         'price_update_pending',

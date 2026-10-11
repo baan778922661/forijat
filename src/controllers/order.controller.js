@@ -232,7 +232,7 @@ exports.nearbyOrders = async (req, res, next) => {
           maxDistance,
           spherical: true,
           query: {
-            status: 'payment_verifying', // معتمدة مالياً وتنتظر الإرسال
+            status: { $in: ['searching_technician', 'payment_verifying'] }, // معتمدة وتنتظر الإسناد
             technicianId: null,
             ...(skills.length ? { serviceCategory: { $in: skills } } : {}),
           },
@@ -252,7 +252,7 @@ exports.acceptOrder = async (req, res, next) => {
   try {
     const otp = crypto.randomInt(100000, 999999).toString();
     const order = await Order.findOneAndUpdate(
-      { _id: req.params.id, status: 'payment_verifying', technicianId: null },
+      { _id: req.params.id, status: { $in: ['searching_technician', 'payment_verifying'] }, technicianId: null },
       { $set: { technicianId: req.user._id, status: 'assigned', otpVerificationCode: otp, otpGeneratedAt: new Date() } },
       { new: true }
     );
