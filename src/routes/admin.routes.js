@@ -9,6 +9,7 @@ router.use(protect, restrictTo('admin'));
 router.get('/orders', ctrl.listOrders);
 router.get('/technicians', ctrl.listTechnicians);
 router.patch('/technicians/:id/verify', ctrl.toggleVerifyTechnician);
+router.patch('/technicians/:id/reject', ctrl.rejectTechnician);
 
 // Payment-proof review queue (one-tap approve/reject)
 router.get('/orders/payment-queue', ctrl.paymentQueue);

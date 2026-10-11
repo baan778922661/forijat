@@ -43,6 +43,7 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
     warrantyUntil: Date, // OTP close time + 14 days
+    paymentApprovedAt: Date, // ختم اعتماد الإدارة لسند الدفع
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );

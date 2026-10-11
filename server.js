@@ -11,6 +11,9 @@ const app = express();
 
 // ===== Global middleware =====
 app.use(helmet());
+// منع كاش واجهات الـ API: لا ETag ولا 304 — البيانات دائماً طازجة بعد الاعتماد
+app.set('etag', false);
+app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
 // ===== CORS مفعّل بالكامل (يدعم Preflight / OPTIONS صراحة) =====
 const corsOptions = {

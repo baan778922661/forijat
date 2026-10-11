@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { protect, restrictTo } = require('../middleware/auth');
+const { protect, restrictTo, requireVerified } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const ctrl = require('../controllers/order.controller');
 
@@ -13,8 +13,8 @@ router.post('/:id/cancel', restrictTo('client'), ctrl.cancelOrder);
 router.get('/:id/otp', restrictTo('client'), ctrl.getOtp);
 
 // Technician
-router.get('/nearby', restrictTo('technician'), ctrl.nearbyOrders); // قبل /:id إلزاماً
-router.put('/:id/accept', restrictTo('technician'), ctrl.acceptOrder);
+router.get('/nearby', restrictTo('technician'), requireVerified, ctrl.nearbyOrders); // قبل /:id إلزاماً
+router.put('/:id/accept', restrictTo('technician'), requireVerified, ctrl.acceptOrder);
 router.put('/:id/start', restrictTo('technician'), ctrl.startJob);
 router.put('/:id/complete', restrictTo('technician'), ctrl.completeWithOtp); // مرادف PUT
 router.post('/:id/labor-fee', restrictTo('technician'), ctrl.proposeLaborFee);

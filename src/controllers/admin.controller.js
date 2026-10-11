@@ -32,7 +32,8 @@ exports.approvePayment = async (req, res, next) => {
       return res.json({ success: true, order, assigned: null });
     }
 
-    // Inspection fee verified: enter escrow and dispatch nearest qualified technician
+    // Inspection fee verified: ختم الاعتماد ثم الإسناد الجغرافي (يحفظ status='assigned' بـ await)
+    order.paymentApprovedAt = new Date();
     const tech = await orderController.assignNearestTechnician(order);
     res.json({ success: true, order, assigned: tech });
   } catch (err) {
@@ -148,9 +149,28 @@ exports.toggleVerifyTechnician = async (req, res, next) => {
   try {
     const tech = await User.findOne({ _id: req.params.id, role: 'technician' });
     if (!tech) return res.status(404).json({ success: false, message: 'الفني غير موجود' });
-    tech.isVerified = !tech.isVerified;
+    tech.isVerified = true;
+    tech.technicianProfile = tech.technicianProfile || {};
+    tech.technicianProfile.verificationStatus = 'verified';
+    tech.technicianProfile.rejectionReason = undefined;
     await tech.save();
-    res.json({ success: true, technician: { _id: tech._id, isVerified: tech.isVerified } });
+    res.json({ success: true, technician: { _id: tech._id, isVerified: true } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/v1/admin/technicians/:id/reject  { reason } — يظهر السبب في تطبيق الفني
+exports.rejectTechnician = async (req, res, next) => {
+  try {
+    const tech = await User.findOne({ _id: req.params.id, role: 'technician' });
+    if (!tech) return res.status(404).json({ success: false, message: 'الفني غير موجود' });
+    tech.isVerified = false;
+    tech.technicianProfile = tech.technicianProfile || {};
+    tech.technicianProfile.verificationStatus = 'rejected';
+    tech.technicianProfile.rejectionReason = req.body.reason || 'لم تطابق الوثائق المتطلبات';
+    await tech.save();
+    res.json({ success: true, technician: { _id: tech._id, isVerified: false } });
   } catch (err) {
     next(err);
   }

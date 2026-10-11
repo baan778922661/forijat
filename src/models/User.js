@@ -31,6 +31,10 @@ const technicianProfileSchema = new mongoose.Schema(
   {
     skills: { type: [String], enum: ['solar', 'electricity', 'ac', 'plumbing'], default: [] },
     nationalIdImageUrl: String,
+    idCardUrl: String,        // صورة البطاقة الشخصية
+    certificateUrl: String,   // شهادة الخبرة / الترخيص
+    verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+    rejectionReason: String,
     ratingAverage: { type: Number, default: 5.0 },
     ratingCount: { type: Number, default: 0 },
     // ✅ يُضبط فقط عبر PUT /api/v1/technicians/status (زر Online)

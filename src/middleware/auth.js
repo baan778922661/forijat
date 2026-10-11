@@ -29,6 +29,14 @@ function restrictTo(...roles) {
   };
 }
 
+/** يرفض الفني غير الموثق بـ 403 — للمسارات الحساسة (Online / nearby / accept) */
+function requireVerified(req, res, next) {
+  if (!req.user?.isVerified) {
+    return res.status(403).json({ success: false, message: 'حسابك قيد المراجعة من الإدارة' });
+  }
+  next();
+}
+
 /** Shared-secret guard for internal cron endpoints (no user JWT needed) */
 function cronAuth(req, res, next) {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
@@ -43,4 +51,4 @@ function signToken(user) {
   });
 }
 
-module.exports = { protect, restrictTo, cronAuth, signToken };
+module.exports = { protect, restrictTo, requireVerified, cronAuth, signToken };
