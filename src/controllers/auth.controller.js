@@ -2,11 +2,14 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
 const { signToken } = require('../middleware/auth');
+const Otp = require('../models/Otp');
+const crypto = require('crypto');
 
 // POST /api/v1/auth/register
 exports.register = async (req, res, next) => {
   try {
-    const { role, name, password, skills, nationalIdImageUrl } = req.body;
+    const { role, name, password, skills, nationalIdImageUrl,
+      city, district, neighborhood, detailedAddress, nationalIdNumber, emergencyPhone, experienceYears } = req.body;
     // ✅ trim() لإزالة أي فراغات مخفية — بدونه يُخزَّن الرقم بفراغات
     // فيفشل login لاحقاً بـ 401 على نفس الرقم الظاهري
     const phone = String(req.body.phone || '').trim();
@@ -21,7 +24,7 @@ exports.register = async (req, res, next) => {
     if (exists) return res.status(409).json({ success: false, message: 'Phone already registered' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const doc = { role, name, phone, passwordHash };
+    const doc = { role, name, phone, passwordHash, city, district, neighborhood, detailedAddress };
 
     // ✅ technicianProfile يُنشأ حصراً للفنيين — العميل والأدمن لا يحملان
     // هذا الحقل أبداً. ولا نمرر location هنا إطلاقاً — يُضبط لاحقاً عبر
@@ -32,6 +35,9 @@ exports.register = async (req, res, next) => {
         skills: skills || [],
         nationalIdImageUrl,
         isAvailable: true,
+        nationalIdNumber,
+        emergencyPhone,
+        experienceYears: experienceYears ? Number(experienceYears) : undefined,
       };
     }
 
@@ -98,3 +104,83 @@ function sanitize(user) {
   delete obj.passwordHash;
   return obj;
 }
+
+// ===== OTP: طلب كود تحقق (تسجيل / استعادة كلمة مرور) =====
+// POST /api/v1/auth/request-otp  { phone, purpose }
+exports.requestOtp = async (req, res, next) => {
+  try {
+    const phone = String(req.body.phone || '').trim();
+    if (!phone) return res.status(400).json({ success: false, message: 'رقم الهاتف مطلوب' });
+    const code = crypto.randomInt(100000, 999999).toString();
+    await Otp.create({
+      phone,
+      code,
+      purpose: req.body.purpose === 'reset_password' ? 'reset_password' : 'register',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // صلاحية 10 دقائق
+    });
+    // لا قناة SMS في هذه المرحلة — الكود يظهر في شاشة «الأكواد الحية» باللوحة
+    res.json({ success: true, message: 'تم إنشاء رمز التحقق — تواصل مع الإدارة أو راجع اللوحة' });
+  } catch (err) { next(err); }
+};
+
+// POST /api/v1/auth/verify-otp  { phone, code } — يفعّل isPhoneVerified
+exports.verifyOtp = async (req, res, next) => {
+  try {
+    const phone = String(req.body.phone || '').trim();
+    const code = String(req.body.code || '').trim();
+    const otp = await Otp.findOneAndUpdate(
+      { phone, code, consumed: false, expiresAt: { $gt: new Date() } },
+      { $set: { consumed: true } },
+      { new: true }
+    );
+    if (!otp) return res.status(400).json({ success: false, message: 'الرمز غير صحيح أو منتهي الصلاحية' });
+    await User.findOneAndUpdate({ phone }, { $set: { isPhoneVerified: true } });
+    res.json({ success: true, message: 'تم التحقق من رقم الهاتف بنجاح', purpose: otp.purpose });
+  } catch (err) { next(err); }
+};
+
+// PUT /api/v1/auth/change-password  { currentPassword, newPassword } — مصادق
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'كلمة المرور الجديدة قصيرة (6 أحرف فأكثر)' });
+    }
+    const user = await User.findById(req.user._id);
+    if (!(await bcrypt.compare(currentPassword || '', user.passwordHash))) {
+      return res.status(401).json({ success: false, message: 'كلمة المرور الحالية غير صحيحة' });
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
+  } catch (err) { next(err); }
+};
+
+// POST /api/v1/auth/reset-password  { phone, code, newPassword } — عبر OTP مستهلك
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const phone = String(req.body.phone || '').trim();
+    const code = String(req.body.code || '').trim();
+    const { newPassword } = req.body;
+    const otp = await Otp.findOne({
+      phone, code, purpose: 'reset_password', consumed: true, expiresAt: { $gt: new Date() },
+    });
+    if (!otp) return res.status(400).json({ success: false, message: 'تحقق من الرمز أولاً' });
+    const user = await User.findOne({ phone });
+    if (!user) return res.status(404).json({ success: false, message: 'الحساب غير موجود' });
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ success: true, message: 'تمت استعادة كلمة المرور — سجّل الدخول الآن' });
+  } catch (err) { next(err); }
+};
+
+// PATCH /api/v1/auth/profile — تعديل بياناتي (اسم/منطقة/عنوان)
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const allowed = ['name', 'city', 'district', 'neighborhood', 'detailedAddress', 'avatarUrl'];
+    const update = {};
+    for (const k of allowed) if (req.body[k] !== undefined) update[k] = req.body[k];
+    const user = await User.findByIdAndUpdate(req.user._id, { $set: update }, { new: true }).select('-passwordHash');
+    res.json({ success: true, user });
+  } catch (err) { next(err); }
+};

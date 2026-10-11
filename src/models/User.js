@@ -31,6 +31,12 @@ const technicianProfileSchema = new mongoose.Schema(
   {
     skills: { type: [String], enum: ['solar', 'electricity', 'ac', 'plumbing'], default: [] },
     nationalIdImageUrl: String,
+    nationalIdNumber: String,   // رقم الهوية
+    idFrontImage: String,       // وجه البطاقة
+    idBackImage: String,        // ظهر البطاقة
+    personalPhoto: String,      // الصورة الشخصية
+    emergencyPhone: String,     // رقم الطوارئ
+    experienceYears: Number,    // سنوات الخبرة
     idCardUrl: String,        // صورة البطاقة الشخصية
     certificateUrl: String,   // شهادة الخبرة / الترخيص
     verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
@@ -54,6 +60,15 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     avatarUrl: String,
     isVerified: { type: Boolean, default: false },
+    // الحقول الجغرافية
+    city: { type: String, trim: true },           // المحافظة
+    district: { type: String, trim: true },       // المديرية / المنطقة
+    neighborhood: { type: String, trim: true },   // الحي
+    detailedAddress: { type: String, trim: true },// العنوان التفصيلي / أقرب معلم
+    // حقول الأمان
+    isPhoneVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },   // false = محظور
+    banReason: String,
     // ✅ العميل والأدمن لا يحملان هذا الحقل أبداً
     technicianProfile: { type: technicianProfileSchema, default: undefined },
   },

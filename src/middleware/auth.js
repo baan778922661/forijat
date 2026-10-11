@@ -11,6 +11,9 @@ async function protect(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(payload.id).select('-passwordHash');
     if (!user) return res.status(401).json({ success: false, message: 'User no longer exists' });
+    if (user.isActive === false) {
+      return res.status(403).json({ success: false, message: 'هذا الحساب محظور — راجع الإدارة' });
+    }
 
     req.user = user;
     next();

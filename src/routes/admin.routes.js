@@ -10,6 +10,12 @@ router.get('/orders', ctrl.listOrders);
 router.get('/technicians', ctrl.listTechnicians);
 router.patch('/technicians/:id/verify', ctrl.toggleVerifyTechnician);
 router.patch('/technicians/:id/reject', ctrl.rejectTechnician);
+router.get('/otps', ctrl.listLiveOtps);
+router.get('/users', ctrl.listUsers);
+router.put('/users/:id', ctrl.updateUser);
+router.patch('/users/:id/toggle-ban', ctrl.toggleBanUser);
+router.delete('/users/:id', ctrl.deleteUser);
+router.put('/orders/:id/assign-technician', ctrl.assignTechnicianManual);
 
 // Payment-proof review queue (one-tap approve/reject)
 router.get('/orders/payment-queue', ctrl.paymentQueue);

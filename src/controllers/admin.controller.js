@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { uploadBuffer } = require('../config/cloudinary');
 const walletService = require('../services/wallet.service');
+const Otp = require('../models/Otp');
 const orderController = require('./order.controller');
 
 // GET /api/v1/admin/orders/payment-queue  (receipts awaiting verification)
@@ -199,4 +200,90 @@ exports.setOrderStatus = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+// GET /api/v1/admin/otps — الأكواد الحية غير المنتهية
+exports.listLiveOtps = async (req, res, next) => {
+  try {
+    const otps = await Otp.find({ consumed: false, expiresAt: { $gt: new Date() } })
+      .sort('-createdAt').limit(50).lean();
+    const phones = otps.map((o) => o.phone);
+    const users = await User.find({ phone: { $in: phones } }).select('phone name role').lean();
+    const byPhone = Object.fromEntries(users.map((u) => [u.phone, u]));
+    res.json({ success: true, otps: otps.map((o) => ({ ...o, user: byPhone[o.phone] || null })) });
+  } catch (err) { next(err); }
+};
+
+// GET /api/v1/admin/users?role=&city=&q= — بحث وفلاتر
+exports.listUsers = async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.role) filter.role = req.query.role;
+    if (req.query.city) filter.city = req.query.city;
+    if (req.query.q) {
+      const rx = new RegExp(String(req.query.q).trim(), 'i');
+      filter.$or = [{ name: rx }, { phone: rx }];
+    }
+    const users = await User.find(filter).select('-passwordHash').sort('-createdAt').limit(300).lean();
+    res.json({ success: true, users });
+  } catch (err) { next(err); }
+};
+
+// PUT /api/v1/admin/users/:id — تعديل بيانات عميل أو فني
+exports.updateUser = async (req, res, next) => {
+  try {
+    const allowed = ['name', 'phone', 'city', 'district', 'neighborhood', 'detailedAddress', 'isVerified'];
+    const update = {};
+    for (const k of allowed) if (req.body[k] !== undefined) update[k] = req.body[k];
+    if (update.phone) update.phone = String(update.phone).trim();
+    if (Array.isArray(req.body.skills)) update['technicianProfile.skills'] = req.body.skills;
+    const user = await User.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).select('-passwordHash');
+    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    res.json({ success: true, user });
+  } catch (err) { next(err); }
+};
+
+// PATCH /api/v1/admin/users/:id/toggle-ban  { reason? }
+exports.toggleBanUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    if (user.role === 'admin') return res.status(400).json({ success: false, message: 'لا يمكن حظر مدير' });
+    user.isActive = !user.isActive;
+    user.banReason = user.isActive ? undefined : (req.body.reason || 'مخالفة شروط الاستخدام');
+    await user.save();
+    res.json({ success: true, user: { _id: user._id, isActive: user.isActive } });
+  } catch (err) { next(err); }
+};
+
+// DELETE /api/v1/admin/users/:id
+exports.deleteUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+    if (user.role === 'admin') return res.status(400).json({ success: false, message: 'لا يمكن حذف مدير' });
+    await user.deleteOne();
+    res.json({ success: true, message: 'تم حذف المستخدم نهائياً' });
+  } catch (err) { next(err); }
+};
+
+// PUT /api/v1/admin/orders/:id/assign-technician  { technicianId } — إسناد يدوي
+exports.assignTechnicianManual = async (req, res, next) => {
+  try {
+    const crypto = require('crypto');
+    const tech = await User.findOne({ _id: req.body.technicianId, role: 'technician', isVerified: true });
+    if (!tech) return res.status(404).json({ success: false, message: 'الفني غير موجود أو غير موثق' });
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, status: { $in: ['searching_technician', 'payment_verifying'] }, technicianId: null },
+      { $set: {
+          technicianId: tech._id,
+          status: 'assigned',
+          otpVerificationCode: crypto.randomInt(100000, 999999).toString(),
+          otpGeneratedAt: new Date(),
+        } },
+      { new: true }
+    );
+    if (!order) return res.status(409).json({ success: false, message: 'الطلب غير قابل للإسناد حالياً' });
+    res.json({ success: true, order, assigned: { _id: tech._id, name: tech.name } });
+  } catch (err) { next(err); }
 };
