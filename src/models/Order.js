@@ -22,6 +22,8 @@ const orderSchema = new mongoose.Schema(
       platformCommissionAmount: { type: Number, default: 0 },
       technicianPayoutAmount: { type: Number, default: 0 },
       paymentStatus: { type: String, enum: ['pending', 'approved'], default: 'pending' },
+      repairFee: { type: Number, default: 0 }, // أجور إصلاح إضافية يحددها الفني بعد المعاينة
+      repairFeeStatus: { type: String, enum: ['none', 'pending_approval', 'approved', 'rejected'], default: 'none' },
       inspectionPaymentProofUrl: String,
       laborPaymentProofUrl: String,
       sparePartsReceiptUrls: { type: [String], default: [] },
@@ -46,6 +48,20 @@ const orderSchema = new mongoose.Schema(
     },
     warrantyUntil: Date, // OTP close time + 14 days
     paymentApprovedAt: Date, // ختم اعتماد الإدارة لسند الدفع
+    voiceNoteUrl: String, // الملاحظة الصوتية المسجلة للعطل
+    problemImages: { type: [String], default: [] }, // صور المشكلة
+    // كرت الضمان الرقمي
+    warranty: {
+      isGuaranteed: { type: Boolean, default: false },
+      durationDays: { type: Number, default: 14 },
+      validUntil: Date,
+      terms: String,
+    },
+    // التقييم المزدوج
+    ratings: {
+      clientRating: { stars: Number, comment: String, at: Date },     // العميل يقيّم الفني
+      technicianRating: { stars: Number, comment: String, at: Date }, // الفني يقيّم العميل
+    },
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );

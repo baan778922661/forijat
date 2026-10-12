@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const Order = require('../models/Order');
-const { uploadBuffer } = require('../config/cloudinary');
+const { uploadBuffer, uploadAudio } = require('../config/cloudinary');
 const { findNearestTechnician } = require('../services/geo.service');
 const walletService = require('../services/wallet.service');
 
@@ -179,7 +179,8 @@ exports.completeWithOtp = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
 
-    const gross = order.financials.inspectionFee + (order.financials.additionalLaborFee || 0);
+    const f = order.financials;
+    const gross = f.inspectionFee + (f.additionalLaborFee || 0) + (f.repairFeeStatus === 'approved' ? (f.repairFee || 0) : 0);
     const { commissionAmount, payoutAmount } = await walletService.creditEarning(
       order.technicianId,
       order._id,
@@ -191,6 +192,13 @@ exports.completeWithOtp = async (req, res, next) => {
     order.financials.technicianPayoutAmount = payoutAmount;
     order.status = 'completed';
     order.warrantyUntil = new Date(Date.now() + WARRANTY_DAYS * 24 * 60 * 60 * 1000);
+    // كرت الضمان الرقمي
+    order.warranty = {
+      isGuaranteed: true,
+      durationDays: WARRANTY_DAYS,
+      validUntil: order.warrantyUntil,
+      terms: 'ضمان فُرِجَت: إصلاح مجاني لأي عطل في نفس العمل خلال مدة الضمان. يسقط الضمان عند أي اتفاق مباشر مع الفني خارج التطبيق.',
+    };
     order.otpVerificationCode = undefined; // burn the OTP
     await order.save();
 
@@ -298,4 +306,122 @@ exports.assignNearestTechnician = async (order) => {
   order.status = 'assigned';
   await order.save();
   return tech;
+};
+
+// ===== المرفقات =====
+// POST /api/v1/orders/:id/voice-note  (client — ملاحظة صوتية m4a)
+exports.uploadVoiceNote = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'الملف الصوتي مطلوب' });
+    const order = await Order.findOne({ _id: req.params.id, clientId: req.user._id });
+    if (!order) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    const { url } = await uploadAudio(req.file.buffer, 'forijat/voice-notes');
+    order.voiceNoteUrl = url;
+    await order.save();
+    res.json({ success: true, voiceNoteUrl: url });
+  } catch (err) { next(err); }
+};
+
+// POST /api/v1/orders/:id/problem-images  (client — حتى 5 صور)
+exports.uploadProblemImages = async (req, res, next) => {
+  try {
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ success: false, message: 'الصور مطلوبة' });
+    const order = await Order.findOne({ _id: req.params.id, clientId: req.user._id });
+    if (!order) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    const urls = [];
+    for (const file of files.slice(0, 5)) {
+      const { url } = await uploadBuffer(file.buffer, 'forijat/problem-images');
+      urls.push(url);
+    }
+    order.problemImages = [...(order.problemImages || []), ...urls].slice(0, 5);
+    await order.save();
+    res.json({ success: true, problemImages: order.problemImages });
+  } catch (err) { next(err); }
+};
+
+// ===== تكلفة الإصلاح الإضافية =====
+// POST /api/v1/orders/:id/repair-fee  (technician) { amount }
+exports.proposeRepairFee = async (req, res, next) => {
+  try {
+    const amount = Number(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'المبلغ غير صالح' });
+    }
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, technicianId: req.user._id, status: { $in: ['assigned', 'in_progress'] } },
+      { $set: { 'financials.repairFee': amount, 'financials.repairFeeStatus': 'pending_approval', status: 'price_update_pending' } },
+      { new: true }
+    );
+    if (!order) return res.status(404).json({ success: false, message: 'الطلب غير موجود أو بحالة لا تسمح' });
+    res.json({ success: true, order });
+  } catch (err) { next(err); }
+};
+
+// POST /api/v1/orders/:id/repair-fee/respond  (client) { decision: 'approve' | 'reject' }
+exports.respondRepairFee = async (req, res, next) => {
+  try {
+    const order = await Order.findOne({
+      _id: req.params.id, clientId: req.user._id,
+      status: 'price_update_pending', 'financials.repairFeeStatus': 'pending_approval',
+    });
+    if (!order) return res.status(404).json({ success: false, message: 'لا توجد مطالبة بانتظار الرد' });
+    if (req.body.decision === 'approve') {
+      order.financials.repairFeeStatus = 'approved';
+      // يبقى price_update_pending — العميل يرفع سند التحويل عبر labor-proof ثم تعتمده الإدارة
+      await order.save();
+      return res.json({ success: true, message: 'تمت الموافقة — أكمل برفع سند التحويل', order });
+    }
+    // رفض: الاكتفاء بالكشفية فقط والعودة للتنفيذ
+    order.financials.repairFee = 0;
+    order.financials.repairFeeStatus = 'rejected';
+    order.status = 'in_progress';
+    await order.save();
+    res.json({ success: true, message: 'تم الرفض — سيُكتفى بأجر الكشفية', order });
+  } catch (err) { next(err); }
+};
+
+// ===== التقييم المزدوج =====
+// POST /api/v1/orders/:id/rate  { stars: 1-5, comment } — العميل يقيّم الفني والعكس
+exports.rateOrder = async (req, res, next) => {
+  try {
+    const stars = Number(req.body.stars);
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      return res.status(400).json({ success: false, message: 'التقييم من 1 إلى 5 نجوم' });
+    }
+    const order = await Order.findById(req.params.id);
+    if (!order || order.status !== 'completed') {
+      return res.status(400).json({ success: false, message: 'التقييم متاح بعد اكتمال الطلب فقط' });
+    }
+    const uid = req.user._id.toString();
+    const entry = { stars, comment: req.body.comment || '', at: new Date() };
+
+    if (order.clientId?.toString() === uid) {
+      if (order.ratings?.clientRating?.stars) return res.status(409).json({ success: false, message: 'قيّمت هذا الطلب مسبقاً' });
+      order.ratings = order.ratings || {};
+      order.ratings.clientRating = entry;
+      await order.save();
+      // تحديث متوسط الفني ذرياً: ratingSum/ratingCount
+      await require('../models/User').findByIdAndUpdate(order.technicianId, {
+        $inc: { 'technicianProfile.ratingCount': 1, 'technicianProfile.ratingSum': stars },
+      });
+      const tech = await require('../models/User').findById(order.technicianId)
+        .select('technicianProfile.ratingSum technicianProfile.ratingCount').lean();
+      const tp = tech?.technicianProfile;
+      if (tp?.ratingCount) {
+        await require('../models/User').findByIdAndUpdate(order.technicianId, {
+          $set: { 'technicianProfile.ratingAverage': Math.round((tp.ratingSum / tp.ratingCount) * 10) / 10 },
+        });
+      }
+      return res.json({ success: true, message: 'شكراً — سُجّل تقييمك للفني' });
+    }
+    if (order.technicianId?.toString() === uid) {
+      if (order.ratings?.technicianRating?.stars) return res.status(409).json({ success: false, message: 'قيّمت هذا الطلب مسبقاً' });
+      order.ratings = order.ratings || {};
+      order.ratings.technicianRating = entry;
+      await order.save();
+      return res.json({ success: true, message: 'سُجّل تقييمك للعميل' });
+    }
+    return res.status(403).json({ success: false, message: 'لست طرفاً في هذا الطلب' });
+  } catch (err) { next(err); }
 };

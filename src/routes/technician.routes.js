@@ -65,12 +65,13 @@ router.post('/documents/:kind', upload.single('image'), async (req, res, next) =
     if (req.user.isVerified) {
       return res.status(403).json({ success: false, message: 'الوثائق مقفلة بعد توثيق الحساب' });
     }
-    if (!['idCard', 'certificate'].includes(req.params.kind)) {
+    if (!['idCard', 'certificate', 'idFront', 'idBack'].includes(req.params.kind)) {
       return res.status(400).json({ success: false, message: 'نوع وثيقة غير صالح' });
     }
     if (!req.file) return res.status(400).json({ success: false, message: 'الصورة مطلوبة' });
     const { url } = await uploadBuffer(req.file.buffer, 'forijat/technician-docs');
-    const field = req.params.kind === 'idCard' ? 'idCardUrl' : 'certificateUrl';
+    const FIELD_MAP = { idCard: 'idCardUrl', certificate: 'certificateUrl', idFront: 'idFrontImage', idBack: 'idBackImage' };
+    const field = FIELD_MAP[req.params.kind];
     const user = await User.findByIdAndUpdate(req.user._id, {
       $set: {
         [`technicianProfile.${field}`]: url,

@@ -37,4 +37,20 @@ function uploadBuffer(buffer, folder) {
   });
 }
 
-module.exports = { cloudinary, uploadBuffer };
+/**
+ * رفع ملف صوتي (m4a/aac) — Cloudinary يعامل الصوت كـ resource_type: video
+ */
+function uploadAudio(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: 'video' },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve({ url: result.secure_url, publicId: result.public_id });
+      }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+module.exports = { cloudinary, uploadBuffer, uploadAudio };

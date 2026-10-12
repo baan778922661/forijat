@@ -43,6 +43,7 @@ const technicianProfileSchema = new mongoose.Schema(
     rejectionReason: String,
     ratingAverage: { type: Number, default: 5.0 },
     ratingCount: { type: Number, default: 0 },
+    ratingSum: { type: Number, default: 0 }, // مجموع النجوم — يُحتسب المتوسط منه ذرياً
     // ✅ يُضبط فقط عبر PUT /api/v1/technicians/status (زر Online)
     // أو PATCH /api/v1/auth/location — بكائن { type, coordinates } كامل
     location: { type: geoPointSchema, default: undefined },
@@ -55,8 +56,11 @@ const userSchema = new mongoose.Schema(
   {
     role: { type: String, enum: ['client', 'technician', 'admin'], required: true },
     name: { type: String, required: true, trim: true },
+    age: { type: Number, min: 0 }, // ≥16 عميل / ≥18 فني (يُفرض في register)
     // trim على مستوى الـ Schema: حماية مزدوجة من أي فراغات مخفية
-    phone: { type: String, unique: true, required: true, index: true, trim: true },
+    // رقم يمني محلي 9 أرقام: يبدأ بـ 77/78/73/71/70 (يُخزَّن بدون رمز الدولة)
+    phone: { type: String, unique: true, required: true, index: true, trim: true,
+      match: [/^(77|78|73|71|70)\d{7}$/, 'رقم هاتف يمني غير صالح'] },
     passwordHash: { type: String, required: true },
     avatarUrl: String,
     isVerified: { type: Boolean, default: false },

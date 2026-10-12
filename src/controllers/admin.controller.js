@@ -205,7 +205,7 @@ exports.setOrderStatus = async (req, res, next) => {
 // GET /api/v1/admin/otps — الأكواد الحية غير المنتهية
 exports.listLiveOtps = async (req, res, next) => {
   try {
-    const otps = await Otp.find({ consumed: false, expiresAt: { $gt: new Date() } })
+    const otps = await Otp.find({ isUsed: false, expiresAt: { $gt: new Date() } })
       .sort('-createdAt').limit(50).lean();
     const phones = otps.map((o) => o.phone);
     const users = await User.find({ phone: { $in: phones } }).select('phone name role').lean();

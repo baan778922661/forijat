@@ -8,11 +8,21 @@ const crypto = require('crypto');
 // POST /api/v1/auth/register
 exports.register = async (req, res, next) => {
   try {
-    const { role, name, password, skills, nationalIdImageUrl,
+    const { role, name, password, skills, nationalIdImageUrl, age,
       city, district, neighborhood, detailedAddress, nationalIdNumber, emergencyPhone, experienceYears } = req.body;
     // ✅ trim() لإزالة أي فراغات مخفية — بدونه يُخزَّن الرقم بفراغات
     // فيفشل login لاحقاً بـ 401 على نفس الرقم الظاهري
-    const phone = String(req.body.phone || '').trim();
+    // توحيد الرقم اليمني: إزالة رمز الدولة والفراغات ثم فرض نمط المزودين المحليين
+    let phone = String(req.body.phone || '').replace(/[\s-]/g, '').replace(/^(\+?00967|\+?967)/, '');
+    if (!/^(77|78|73|71|70)\d{7}$/.test(phone)) {
+      return res.status(400).json({ success: false, message: 'رقم هاتف يمني غير صالح — 9 أرقام تبدأ بـ 77/78/73/71/70' });
+    }
+    // العمر: ≥16 للعميل، ≥18 للفني
+    const ageNum = Number(age);
+    const minAge = role === 'technician' ? 18 : 16;
+    if (age !== undefined && (!Number.isFinite(ageNum) || ageNum < minAge)) {
+      return res.status(400).json({ success: false, message: `الحد الأدنى للعمر ${minAge} سنة` });
+    }
     if (!['client', 'technician'].includes(role)) {
       return res.status(400).json({ success: false, message: 'Role must be client or technician' });
     }
@@ -24,7 +34,7 @@ exports.register = async (req, res, next) => {
     if (exists) return res.status(409).json({ success: false, message: 'Phone already registered' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const doc = { role, name, phone, passwordHash, city, district, neighborhood, detailedAddress };
+    const doc = { role, name, phone, passwordHash, age: Number.isFinite(ageNum) ? ageNum : undefined, city, district, neighborhood, detailedAddress };
 
     // ✅ technicianProfile يُنشأ حصراً للفنيين — العميل والأدمن لا يحملان
     // هذا الحقل أبداً. ولا نمرر location هنا إطلاقاً — يُضبط لاحقاً عبر
@@ -55,7 +65,7 @@ exports.register = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { password } = req.body;
-    const phone = String(req.body.phone || '').trim(); // نفس التنظيف عند الدخول
+    let phone = String(req.body.phone || '').replace(/[\s-]/g, '').replace(/^(\+?00967|\+?967)/, ''); // نفس التوحيد
     // passwordHash غير مستثنى من الـ select في الـ Schema — يصل كاملاً هنا
     const user = await User.findOne({ phone });
     if (!user || !(await bcrypt.compare(password || '', user.passwordHash))) {
@@ -112,9 +122,12 @@ exports.requestOtp = async (req, res, next) => {
     const phone = String(req.body.phone || '').trim();
     if (!phone) return res.status(400).json({ success: false, message: 'رقم الهاتف مطلوب' });
     const code = crypto.randomInt(100000, 999999).toString();
+    const owner = await User.findOne({ phone }).select('name role').lean();
     await Otp.create({
       phone,
       code,
+      userName: owner?.name,
+      role: owner?.role || 'guest',
       purpose: req.body.purpose === 'reset_password' ? 'reset_password' : 'register',
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // صلاحية 10 دقائق
     });
@@ -129,13 +142,18 @@ exports.verifyOtp = async (req, res, next) => {
     const phone = String(req.body.phone || '').trim();
     const code = String(req.body.code || '').trim();
     const otp = await Otp.findOneAndUpdate(
-      { phone, code, consumed: false, expiresAt: { $gt: new Date() } },
-      { $set: { consumed: true } },
+      { phone, code, isUsed: false, expiresAt: { $gt: new Date() } },
+      { $set: { isUsed: true } },
       { new: true }
     );
     if (!otp) return res.status(400).json({ success: false, message: 'الرمز غير صحيح أو منتهي الصلاحية' });
-    await User.findOneAndUpdate({ phone }, { $set: { isPhoneVerified: true } });
-    res.json({ success: true, message: 'تم التحقق من رقم الهاتف بنجاح', purpose: otp.purpose });
+    const user = await User.findOneAndUpdate({ phone }, { $set: { isPhoneVerified: true } }, { new: true });
+    // إصدار التوكن فوراً — إكمال التسجيل/الدخول بعد التحقق
+    if (user) {
+      const token = signToken(user);
+      return res.json({ success: true, message: 'تم التحقق من رقم الهاتف بنجاح', purpose: otp.purpose, token, user: sanitize(user) });
+    }
+    res.json({ success: true, message: 'تم التحقق بنجاح', purpose: otp.purpose });
   } catch (err) { next(err); }
 };
 
