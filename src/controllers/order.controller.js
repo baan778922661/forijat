@@ -32,6 +32,7 @@ exports.createOrder = async (req, res, next) => {
     }
 
     const order = await Order.create({
+      googleMapsUrl: req.body.googleMapsUrl || '',
       clientId: req.user._id,
       serviceCategory: category,
       description,

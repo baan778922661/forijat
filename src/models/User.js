@@ -47,7 +47,9 @@ const technicianProfileSchema = new mongoose.Schema(
     // ✅ يُضبط فقط عبر PUT /api/v1/technicians/status (زر Online)
     // أو PATCH /api/v1/auth/location — بكائن { type, coordinates } كامل
     location: { type: geoPointSchema, default: undefined },
-    isAvailable: { type: Boolean, default: true },
+isAvailable: { type: Boolean, default: true },
+    schedule: { days: { type: [String], default: [] }, startTime: { type: String, default: '' }, endTime: { type: String, default: '' } },
+    tier: { type: String, enum: ['bronze','silver','gold','platinum'], default: 'bronze' },
   },
   { _id: false }
 );
@@ -63,6 +65,8 @@ const userSchema = new mongoose.Schema(
       match: [/^(77|78|73|71|70)\d{7}$/, 'رقم هاتف يمني غير صالح'] },
     passwordHash: { type: String, required: true },
     avatarUrl: String,
+  sessions: [{ deviceName: { type: String, default: '' }, platform: { type: String, default: '' }, lastLoginAt: Date }],
+  savedAddresses: [{ label: String, city: String, district: String, neighborhood: String, detailedAddress: String, googleMapsUrl: String }],
     isVerified: { type: Boolean, default: false },
     // الحقول الجغرافية
     city: { type: String, trim: true },           // المحافظة

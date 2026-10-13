@@ -297,3 +297,49 @@ exports.assignTechnicianManual = async (req, res, next) => {
     res.json({ success: true, order, assigned: { _id: tech._id, name: tech.name } });
   } catch (err) { next(err); }
 };
+
+exports.liveOtps = async (req, res) => {
+  try {
+    const Otp = require('../models/Otp');
+    const otps = await Otp.find({}).sort({ createdAt: -1 }).limit(50).lean();
+    const phones = otps.map(o => o.phone);
+    const users = await User.find({ phone: { $in: phones } }).select('name phone role').lean();
+    const map = {}; users.forEach(u => map[u.phone] = u);
+    return res.json({ otps: otps.map(o => ({ _id: o._id, phone: o.phone, code: o.code,
+      channel: o.channel, purpose: o.purpose || 'register', createdAt: o.createdAt,
+      userName: (map[o.phone] && map[o.phone].name) || '', role: (map[o.phone] && map[o.phone].role) || 'client' })) });
+  } catch (e) { return res.status(500).json({ success: false, message: 'خطأ في الخادم' }); }
+};
+
+exports.setWarranty = async (req, res) => {
+  try {
+    const days = parseInt(req.body.days) || 14;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    order.warrantyDurationDays = days;
+    order.warrantyValidUntil = new Date(Date.now() + days * 86400000);
+    await order.save();
+    return res.json({ success: true, message: 'تم اعتماد ضمان ' + days + ' يوم', order });
+  } catch (e) { return res.status(500).json({ success: false, message: 'خطأ في الخادم' }); }
+};
+
+exports.financeSummary = async (req, res) => {
+  try {
+    const Wallet = require('../models/Wallet');
+    const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+    const weekStart = new Date(Date.now() - 7 * 86400000);
+    const completed = await Order.find({ status: 'completed' }).select('financials updatedAt').lean();
+    let today = 0, week = 0, inspection = 0;
+    for (const o of completed) {
+      const f = o.financials || {}; const c = f.commissionAmount || 0;
+      const t = new Date(o.updatedAt);
+      if (t >= dayStart) today += c;
+      if (t >= weekStart) week += c;
+      if (f.inspectionFee) inspection += Math.round(f.inspectionFee * ((f.platformCommissionPercent || 15) / 100));
+    }
+    const wallets = await Wallet.find({}).select('balances').lean();
+    let escrow = 0;
+    for (const w of wallets) escrow += ((w.balances && w.balances.pending) || 0) + ((w.balances && w.balances.locked) || 0);
+    return res.json({ success: true, today, week, inspectionCommission: inspection, escrowHeld: escrow, completedCount: completed.length });
+  } catch (e) { return res.status(500).json({ success: false, message: 'خطأ في الخادم' }); }
+};

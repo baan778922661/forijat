@@ -52,7 +52,10 @@ const orderSchema = new mongoose.Schema(
       default: 'pending_payment_proof',
       index: true,
     },
-    warrantyUntil: Date, // OTP close time + 14 days
+    warrantyUntil: Date,
+  warrantyDurationDays: { type: Number, default: 14 },
+  warrantyValidUntil: Date,
+  googleMapsUrl: { type: String, default: '' }, // OTP close time + 14 days
     paymentApprovedAt: Date, // ختم اعتماد الإدارة لسند الدفع
     voiceNoteUrl: String, // الملاحظة الصوتية المسجلة للعطل
     problemImages: { type: [String], default: [] }, // صور المشكلة

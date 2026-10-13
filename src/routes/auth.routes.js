@@ -13,4 +13,6 @@ router.patch('/availability', protect, restrictTo('technician'), ctrl.setAvailab
 router.put('/change-password', protect, ctrl.changePassword);
 router.patch('/profile', protect, ctrl.updateProfile);
 
+router.post('/avatar', protect, upload.single('image'), ctrl.uploadAvatar);
+router.post('/logout-others', protect, ctrl.logoutOthers);
 module.exports = router;

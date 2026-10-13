@@ -5,7 +5,7 @@ const otpSchema = new mongoose.Schema(
     phone: { type: String, required: true, index: true },
     code: { type: String, required: true }, // 6 أرقام
     userName: String, // يظهر في شاشة الأكواد الحية باللوحة
-    role: { type: String, enum: ['client', 'technician', 'admin', 'guest'], default: 'guest' },
+    role: { type: String, enum: ['register','forgot_password','reset_password'], default: 'guest' },
     purpose: { type: String, enum: ['register', 'reset_password'], default: 'register' },
     deliveryMethod: { type: String, enum: ['sms', 'whatsapp'], default: 'sms' }, // قناة الاستلام المطلوبة
     expiresAt: { type: Date, required: true },

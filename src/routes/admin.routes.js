@@ -28,4 +28,6 @@ router.get('/withdrawals', ctrl.listWithdrawals);
 router.post('/withdrawals/:id/complete', upload.single('receipt'), ctrl.completeWithdrawal);
 router.post('/withdrawals/:id/reject', ctrl.rejectWithdrawal);
 
+router.put('/orders/:id/warranty', ctrl.setWarranty);
+router.get('/finance/summary', ctrl.financeSummary);
 module.exports = router;

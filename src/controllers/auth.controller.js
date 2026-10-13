@@ -72,6 +72,14 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
     const token = signToken(user);
+    try {
+      user.sessions = [...(user.sessions || []).slice(-4), {
+        deviceName: req.body.deviceName || 'جهاز غير معروف',
+        platform: req.body.platform || 'android',
+        lastLoginAt: new Date()
+      }];
+      await user.save();
+    } catch (_) {}
     res.json({ success: true, token, user: sanitize(user) });
   } catch (err) {
     next(err);
