@@ -39,7 +39,7 @@ const technicianProfileSchema = new mongoose.Schema(
     experienceYears: Number,    // سنوات الخبرة
     idCardUrl: String,        // صورة البطاقة الشخصية
     certificateUrl: String,   // شهادة الخبرة / الترخيص
-    verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+    verificationStatus: { type: String, enum: ['pending_documents','under_review','approved','rejected','pending','verified'], default: 'pending_documents' },
     rejectionReason: String,
     ratingAverage: { type: Number, default: 5.0 },
     ratingCount: { type: Number, default: 0 },
@@ -66,7 +66,13 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     avatarUrl: String,
   sessions: [{ deviceName: { type: String, default: '' }, platform: { type: String, default: '' }, lastLoginAt: Date }],
-  savedAddresses: [{ label: String, city: String, district: String, neighborhood: String, detailedAddress: String, googleMapsUrl: String }],
+  savedAddresses: [{
+    title: { type: String, default: 'المنزل' },
+    label: String, city: String, district: String,
+    neighborhood: String, detailedAddress: String, googleMapsUrl: String,
+    latitude: Number, longitude: Number,
+    isDefault: { type: Boolean, default: false }
+  }],
     isVerified: { type: Boolean, default: false },
     // الحقول الجغرافية
     city: { type: String, trim: true },           // المحافظة

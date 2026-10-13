@@ -300,3 +300,42 @@ exports.logoutOthers = async (req, res, next) => {
     next(err);
   }
 };
+exports.checkPhone = async (req, res) => {
+  try {
+    const phone = String(req.body.phone || req.query.phone || '').trim();
+    if (!phone) return res.status(400).json({ exists: false, message: 'الرقم مطلوب' });
+    const u = await User.findOne({ phone }).select('role');
+    return res.json({ exists: !!u, role: u?.role || null });
+  } catch (e) { return res.status(500).json({ exists: false }); }
+};
+
+const SystemSettings = require('../models/SystemSettings');
+exports.getSettings = async (req, res) => {
+  try { const s = await SystemSettings.getSingleton(); return res.json({ success: true, settings: s }); }
+  catch (e) { return res.status(500).json({ success: false }); }
+};
+exports.updateSettings = async (req, res) => {
+  try {
+    const s = await SystemSettings.getSingleton();
+    if (req.body.supportContacts) s.supportContacts = { ...(s.supportContacts||{}), ...req.body.supportContacts };
+    if (req.body.defaultInspectionFee != null) s.defaultInspectionFee = req.body.defaultInspectionFee;
+    if (Array.isArray(req.body.warrantyRules)) s.warrantyRules = req.body.warrantyRules;
+    await s.save();
+    return res.json({ success: true, settings: s });
+  } catch (e) { return res.status(500).json({ success: false, message: 'خطأ في الخادم' }); }
+};
+
+exports.reviewTechnician = async (req, res) => {
+  try {
+    const { action, reason } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user || user.role !== 'technician')
+      return res.status(404).json({ success: false, message: 'الفني غير موجود' });
+    const map = { approve: 'approved', reject: 'rejected', review: 'under_review' };
+    user.technicianProfile = user.technicianProfile || {};
+    user.technicianProfile.verificationStatus = map[action] || 'under_review';
+    if (action === 'reject') user.technicianProfile.rejectionReason = reason || 'الوثائق غير مطابقة';
+    await user.save();
+    return res.json({ success: true, user });
+  } catch (e) { return res.status(500).json({ success: false, message: 'خطأ في الخادم' }); }
+};

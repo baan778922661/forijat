@@ -31,4 +31,6 @@ router.patch('/profile', protect, ctrl.updateProfile);
 router.post('/avatar', protect, upload.single('image'), ctrl.uploadAvatar);
 router.post('/logout-others', protect, ctrl.logoutOthers);
 
+router.post('/check-phone', ctrl.checkPhone);
+router.get('/settings', ctrl.getSettings);
 module.exports = router;

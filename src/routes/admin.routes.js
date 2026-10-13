@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { protect, restrictTo } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const ctrl = require('../controllers/admin.controller');
+const authCtrl = require('../controllers/auth.controller');
 
 router.use(protect, restrictTo('admin'));
 
@@ -30,4 +31,7 @@ router.post('/withdrawals/:id/reject', ctrl.rejectWithdrawal);
 
 router.put('/orders/:id/warranty', ctrl.setWarranty);
 router.get('/finance/summary', ctrl.financeSummary);
+router.get('/settings', authCtrl.getSettings);
+router.put('/settings', authCtrl.updateSettings);
+router.post('/technicians/:id/review', authCtrl.reviewTechnician);
 module.exports = router;

@@ -5,6 +5,16 @@ const orderSchema = new mongoose.Schema(
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     technicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     serviceCategory: { type: String, enum: ['solar', 'electricity', 'ac', 'plumbing'], required: true },
+  isEmergency: { type: Boolean, default: false },
+  scheduleType: { type: String, enum: ['now','scheduled'], default: 'now' },
+  scheduledDateTime: { type: Date, default: null },
+  orderNumber: { type: String, unique: true, sparse: true },
+  attachments: {
+    images: [{ type: String }],
+    voiceNoteUrl: { type: String, default: null },
+    videoUrl: { type: String, default: null },
+    notes: { type: String, default: '' }
+  },
     // لقطة المنطقة وقت الإنشاء — المطابقة الهرمية مع الفني تعتمد عليها
     city: { type: String, trim: true },      // المحافظة
     district: { type: String, trim: true },  // المديرية

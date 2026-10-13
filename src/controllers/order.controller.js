@@ -32,6 +32,11 @@ exports.createOrder = async (req, res, next) => {
     }
 
     const order = await Order.create({
+      orderNumber: 'FJ' + Date.now().toString().slice(-8),
+      isEmergency: req.body.isEmergency === true,
+      scheduleType: req.body.scheduleType || 'now',
+      scheduledDateTime: req.body.scheduledDateTime || null,
+      attachments: req.body.attachments || { images: [], voiceNoteUrl: null, videoUrl: null, notes: req.body.description || '' },
       googleMapsUrl: req.body.googleMapsUrl || '',
       clientId: req.user._id,
       serviceCategory: category,
