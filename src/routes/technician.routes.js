@@ -8,7 +8,7 @@ router.use(protect, restrictTo('technician'));
 
 /**
  * GET /api/v1/technicians/wallet
- * جلب أرصدة محفظة الفني (المتاح، قيد التسوية، طلبات السحب قيد الإرسال)
+ * جلب أرصدة محفظة الفني (يحل مشكلة 404 في تطبيق الفني)
  */
 router.get('/wallet', async (req, res, next) => {
   try {
@@ -57,15 +57,24 @@ router.put('/profile', async (req, res, next) => {
     const update = {};
     if (req.body.phone) update.phone = String(req.body.phone).trim();
     if (req.body.avatarUrl) update.avatarUrl = req.body.avatarUrl;
+    
     if (!req.user.isVerified) {
       if (Array.isArray(req.body.skills)) update['technicianProfile.skills'] = req.body.skills;
-      if (req.body.idCardUrl) update['technicianProfile.idCardUrl'] = req.body.idCardUrl;
-      if (req.body.certificateUrl) update['technicianProfile.certificateUrl'] = req.body.certificateUrl;
+      if (req.body.idCardUrl) {
+        update['technicianProfile.idCardUrl'] = req.body.idCardUrl;
+        update['technicianProfile.idFrontImage'] = req.body.idCardUrl;
+        update['technicianProfile.documents.nationalIdFront'] = req.body.idCardUrl;
+      }
+      if (req.body.certificateUrl) {
+        update['technicianProfile.certificateUrl'] = req.body.certificateUrl;
+        update['technicianProfile.documents.certificate'] = req.body.certificateUrl;
+      }
       if (req.body.idCardUrl || req.body.certificateUrl) {
         update['technicianProfile.verificationStatus'] = 'under_review';
         update['technicianProfile.rejectionReason'] = undefined;
       }
     }
+    
     const user = await User.findByIdAndUpdate(req.user._id, { $set: update }, { new: true }).select('-passwordHash');
     res.json({ success: true, user });
   } catch (err) {
@@ -75,7 +84,7 @@ router.put('/profile', async (req, res, next) => {
 
 /**
  * POST /api/v1/technicians/documents
- * رفع حزمة الوثائق دفعة واحدة عند التسجيل (وجه الهوية + ظهر الهوية + الشهادة)
+ * رفع حزمة الوثائق دفعة واحدة عند معالج التسجيل
  */
 router.post(
   '/documents',
@@ -91,24 +100,30 @@ router.post(
       if (req.files?.idFront?.[0]) {
         const { url } = await uploadBuffer(req.files.idFront[0].buffer, 'forijat/technician-docs');
         update['technicianProfile.idFrontImage'] = url;
+        update['technicianProfile.idCardUrl'] = url;
+        update['technicianProfile.documents.nationalIdFront'] = url;
       }
       if (req.files?.idBack?.[0]) {
         const { url } = await uploadBuffer(req.files.idBack[0].buffer, 'forijat/technician-docs');
         update['technicianProfile.idBackImage'] = url;
+        update['technicianProfile.documents.nationalIdBack'] = url;
       }
       if (req.files?.certificate?.[0]) {
         const { url } = await uploadBuffer(req.files.certificate[0].buffer, 'forijat/technician-docs');
         update['technicianProfile.certificateUrl'] = url;
+        update['technicianProfile.documents.certificate'] = url;
       }
 
       if (Object.keys(update).length > 0) {
         update['technicianProfile.verificationStatus'] = 'under_review';
         await User.findByIdAndUpdate(req.user._id, {
-          $set: update,$unset: { 'technicianProfile.rejectionReason': '' },
+          $set: update,
+          $unset: { 'technicianProfile.rejectionReason': '' },
         });
       }
 
-      res.json({ success: true, message: 'تم رفع الوثائق بنجاح' });
+      const user = await User.findById(req.user._id).select('-passwordHash');
+      res.json({ success: true, message: 'تم رفع الوثائق بنجاح', user });
     } catch (err) {
       next(err);
     }
@@ -116,34 +131,45 @@ router.post(
 );
 
 /**
- * POST /api/v1/technicians/documents/:kind (لرفع وثيقة منفردة من تبويب حسابي)
+ * POST /api/v1/technicians/documents/:kind
+ * رفع وثيقة منفردة من شاشة "ملف الوثائق والتراخيص"
+ * kind: idFront | idBack | certificate | idCard
  */
 router.post('/documents/:kind', upload.single('image'), async (req, res, next) => {
   try {
     if (req.user.isVerified) {
       return res.status(403).json({ success: false, message: 'الوثائق مقفلة بعد توثيق الحساب' });
     }
-    if (!['idCard', 'certificate', 'idFront', 'idBack'].includes(req.params.kind)) {
+
+    const validKinds = ['idCard', 'certificate', 'idFront', 'idBack', 'nationalIdFront', 'nationalIdBack'];
+    if (!validKinds.includes(req.params.kind)) {
       return res.status(400).json({ success: false, message: 'نوع وثيقة غير صالح' });
     }
+
     if (!req.file) return res.status(400).json({ success: false, message: 'الصورة مطلوبة' });
 
     const { url } = await uploadBuffer(req.file.buffer, 'forijat/technician-docs');
-    const FIELD_MAP = {
-      idCard: 'idCardUrl',
-      certificate: 'certificateUrl',
-      idFront: 'idFrontImage',
-      idBack: 'idBackImage',
+    const update = {
+      'technicianProfile.verificationStatus': 'under_review',
     };
-    const field = FIELD_MAP[req.params.kind];
+
+    // توحيد الحقول البرمجية لتتطابق تلقائياً مع التطبيق ولوحة التحكم
+    if (req.params.kind === 'idFront' || req.params.kind === 'idCard' || req.params.kind === 'nationalIdFront') {
+      update['technicianProfile.idFrontImage'] = url;
+      update['technicianProfile.idCardUrl'] = url;
+      update['technicianProfile.documents.nationalIdFront'] = url;
+    } else if (req.params.kind === 'idBack' || req.params.kind === 'nationalIdBack') {
+      update['technicianProfile.idBackImage'] = url;
+      update['technicianProfile.documents.nationalIdBack'] = url;
+    } else if (req.params.kind === 'certificate') {
+      update['technicianProfile.certificateUrl'] = url;
+      update['technicianProfile.documents.certificate'] = url;
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       {
-        $set: {
-          [`technicianProfile.${field}`]: url,
-          'technicianProfile.verificationStatus': 'under_review',
-        },
+        $set: update,
         $unset: { 'technicianProfile.rejectionReason': '' },
       },
       { new: true }
