@@ -10,7 +10,11 @@ const orderController = require('./order.controller');
 exports.paymentQueue = async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    const orders = await Order.find({ status: 'payment_verifying', 'financials.paymentStatus': { $ne: 'approved' } })
+    // الطابور بالمرحلة: سند كشف معلق أو سند أجور يد معلق — نفس الطلب قد يدخل مرتين
+    const orders = await Order.find({
+      status: 'payment_verifying',
+      'financials.pendingProofType': { $in: ['inspection', 'labor'] },
+    })
       .populate('clientId', 'name phone')
       .sort('createdAt')
       .limit(100)
@@ -27,15 +31,20 @@ exports.approvePayment = async (req, res, next) => {
     const order = await Order.findOne({ _id: req.params.id, status: 'payment_verifying' });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found or already processed' });
 
-    if (order.financials.laborPaymentProofUrl && order.status === 'payment_verifying' && order.technicianId) {
-      // Labor-fee top-up verified: back to work
+    // التفرع الصريح على مرحلة السند
+    if (order.financials.pendingProofType === 'labor' && order.financials.laborPaymentProofUrl) {
+      // سند أجور اليد/القطع معتمد ← يُعتمد المبلغ فعلياً ويستمر التنفيذ
+      order.financials.repairFeeStatus = 'approved';
+      order.financials.pendingProofType = 'none';
       order.status = 'in_progress';
-      await order.save();
-      return res.json({ success: true, order, assigned: null });
+      const saved = await order.save();
+      console.log('Labor proof approved:', saved._id.toString());
+      return res.json({ success: true, message: 'تم اعتماد سند أجور اليد — الطلب قيد التنفيذ', order: saved, assigned: null });
     }
 
     // 1) الاعتماد يُحفظ دائماً — بغض النظر عن توفر فني حالياً
     order.financials.paymentStatus = 'approved';
+    order.financials.pendingProofType = 'none'; // خرج من طابور الكشف نهائياً
     order.paymentApprovedAt = new Date();
     const tech = await orderController.assignNearestTechnician(order); // يحفظ 'assigned' عند نجاحه
     if (tech) {
@@ -58,13 +67,14 @@ exports.rejectPayment = async (req, res, next) => {
     const order = await Order.findOne({ _id: req.params.id, status: 'payment_verifying' });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    if (order.financials.laborPaymentProofUrl && order.technicianId) {
-      order.status = 'price_update_pending'; // client must re-upload
+    if (order.financials.pendingProofType === 'labor') {
+      order.status = 'price_update_pending'; // العميل يعيد رفع سند الأجور فقط
       order.financials.laborPaymentProofUrl = undefined;
     } else {
       order.status = 'pending_payment_proof';
       order.financials.inspectionPaymentProofUrl = undefined;
     }
+    order.financials.pendingProofType = 'none';
     await order.save();
     res.json({ success: true, order });
   } catch (err) {

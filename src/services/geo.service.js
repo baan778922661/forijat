@@ -8,7 +8,24 @@ const User = require('../models/User');
  * @param {string} skill  'solar' | 'electricity' | 'ac' | 'plumbing'
  * @param {number} maxDistanceMeters
  */
-async function findNearestTechnician(coordinates, skill, maxDistanceMeters = 30000) {
+async function findNearestTechnician(coordinates, skill, maxDistanceMeters = 30000, { city, district } = {}) {
+  // المطابقة الهرمية أولاً: نفس المديرية والمحافظة والتخصص — الأسرع والأدق محلياً
+  if (city) {
+    const local = await User.find({
+      role: 'technician',
+      isVerified: true,
+      city,
+      ...(district ? { district } : {}),
+      'technicianProfile.isAvailable': true,
+      'technicianProfile.skills': skill,
+    })
+      .select('name phone avatarUrl technicianProfile.ratingAverage technicianProfile.ratingCount')
+      .sort({ 'technicianProfile.ratingAverage': -1 })
+      .limit(1)
+      .lean();
+    if (local.length) return local;
+  }
+  // سقوط جغرافي: أقرب فني موثق بنفس التخصص ضمن النطاق
   const results = await User.aggregate([
     {
       $geoNear: {

@@ -13,6 +13,7 @@ exports.createOrder = async (req, res, next) => {
     const {
       serviceCategory, serviceType, description,
       longitude, latitude, address, addressDetails, landmark, inspectionFee,
+      city, district,
     } = req.body;
 
     const category = serviceCategory || serviceType;
@@ -42,6 +43,8 @@ exports.createOrder = async (req, res, next) => {
         addressDetails: addressDetails || address,
         landmark,
       },
+      city: city || req.user.city,         // لقطة المنطقة للمطابقة الهرمية
+      district: district || req.user.district,
       financials: { inspectionFee: Number(inspectionFee) },
       status: 'pending_payment_proof',
     });
@@ -62,6 +65,8 @@ exports.uploadInspectionProof = async (req, res, next) => {
     const { url } = await uploadBuffer(req.file.buffer, 'forijat/payment-proofs');
     order.financials.inspectionPaymentProofUrl = url;
     order.financials.inspectionReference = req.body.referenceNumber || undefined;
+    order.financials.pendingProofType = 'inspection';
+    order.financials.paymentStatus = 'pending'; // الطابور يعتمد المرحلة
     order.status = 'payment_verifying';
     await order.save();
 
@@ -141,6 +146,7 @@ exports.uploadLaborProof = async (req, res, next) => {
 
     const { url } = await uploadBuffer(req.file.buffer, 'forijat/payment-proofs');
     order.financials.laborPaymentProofUrl = url;
+    order.financials.pendingProofType = 'labor'; // سند المرحلة الثانية — مستقل عن الأول
     order.status = 'payment_verifying';
     await order.save();
     res.json({ success: true, order });
@@ -226,33 +232,24 @@ exports.cancelOrder = async (req, res, next) => {
 // GET /api/v1/orders/nearby?maxDistance=20000  (technician: الطلبات القريبة المطابقة لمهاراته)
 exports.nearbyOrders = async (req, res, next) => {
   try {
-    const loc = req.user.technicianProfile?.location;
-    if (!loc?.coordinates?.length) {
-      return res.status(400).json({ success: false, message: 'حدّث موقعك أولاً عبر PUT /technicians/status' });
-    }
-    const skills = req.user.technicianProfile?.skills || [];
-    const maxDistance = Math.min(Number(req.query.maxDistance) || 20000, 100000);
-    const orders = await Order.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: loc.coordinates },
-          distanceField: 'distanceMeters',
-          maxDistance,
-          spherical: true,
-          query: {
-            status: { $in: ['searching_technician', 'payment_verifying'] }, // معتمدة وتنتظر الإسناد
-            technicianId: null,
-            ...(skills.length ? { serviceCategory: { $in: skills } } : {}),
-          },
-        },
-      },
-      { $limit: 20 },
-      { $project: { otpVerificationCode: 0 } },
-    ]);
+    const tp = req.user.technicianProfile || {};
+    const skills = tp.skills || [];
+    // المطابقة الهرمية الأساسية: تخصص + محافظة + مديرية + موثق ومتصل
+    const filter = {
+      status: { $in: ['searching_technician', 'payment_verifying'] },
+      technicianId: null,
+      ...(skills.length ? { serviceCategory: { $in: skills } } : {}),
+      ...(req.user.city ? { city: req.user.city } : {}),
+      ...(req.user.district ? { district: req.user.district } : {}),
+    };
+    const orders = await Order.find(filter)
+      .select('-otpVerificationCode')
+      .populate('clientId', 'name phone city district')
+      .sort('-createdAt')
+      .limit(30)
+      .lean();
     res.json({ success: true, orders });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 };
 
 // PUT /api/v1/orders/:id/accept  (قبول ذري — يُسند فقط إن كان بلا فني)
@@ -296,7 +293,7 @@ exports.startJob = async (req, res, next) => {
 
 // ===== Internal helpers used by admin controller =====
 exports.assignNearestTechnician = async (order) => {
-  const candidates = await findNearestTechnician(order.location.coordinates, order.serviceCategory);
+  const candidates = await findNearestTechnician(order.location.coordinates, order.serviceCategory, 30000, { city: order.city, district: order.district });
   if (!candidates.length) return null;
   const tech = candidates[0];
   const otp = crypto.randomInt(100000, 999999).toString();
@@ -367,7 +364,7 @@ exports.respondRepairFee = async (req, res, next) => {
     });
     if (!order) return res.status(404).json({ success: false, message: 'لا توجد مطالبة بانتظار الرد' });
     if (req.body.decision === 'approve') {
-      order.financials.repairFeeStatus = 'approved';
+      order.financials.repairFeeStatus = 'pending_approval'; // يُعتمد فعلياً بعد اعتماد سنده
       // يبقى price_update_pending — العميل يرفع سند التحويل عبر labor-proof ثم تعتمده الإدارة
       await order.save();
       return res.json({ success: true, message: 'تمت الموافقة — أكمل برفع سند التحويل', order });

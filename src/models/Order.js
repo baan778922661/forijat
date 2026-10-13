@@ -5,6 +5,9 @@ const orderSchema = new mongoose.Schema(
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     technicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     serviceCategory: { type: String, enum: ['solar', 'electricity', 'ac', 'plumbing'], required: true },
+    // لقطة المنطقة وقت الإنشاء — المطابقة الهرمية مع الفني تعتمد عليها
+    city: { type: String, trim: true },      // المحافظة
+    district: { type: String, trim: true },  // المديرية
     description: String,
     // GeoJSON Point — coordinates إلزامية هنا لذا default 'Point' آمن
     // (لا يُنشأ الكائن أبداً بدون إحداثيات من مسار إنشاء الطلب).
@@ -22,6 +25,8 @@ const orderSchema = new mongoose.Schema(
       platformCommissionAmount: { type: Number, default: 0 },
       technicianPayoutAmount: { type: Number, default: 0 },
       paymentStatus: { type: String, enum: ['pending', 'approved'], default: 'pending' },
+      // مرحلة السند المعلق حالياً: كشف أولي أم أجور يد/قطع — يفصل الطابورين
+      pendingProofType: { type: String, enum: ['none', 'inspection', 'labor'], default: 'none' },
       repairFee: { type: Number, default: 0 }, // أجور إصلاح إضافية يحددها الفني بعد المعاينة
       repairFeeStatus: { type: String, enum: ['none', 'pending_approval', 'approved', 'rejected'], default: 'none' },
       inspectionPaymentProofUrl: String,
@@ -67,5 +72,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ location: '2dsphere' });
+// فهرس هرمي للمطابقة التلقائية: تخصص + محافظة + مديرية + حالة
+orderSchema.index({ serviceCategory: 1, city: 1, district: 1, status: 1 }); // hierarchical
 
 module.exports = mongoose.model('Order', orderSchema);

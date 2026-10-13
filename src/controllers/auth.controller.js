@@ -126,8 +126,9 @@ exports.requestOtp = async (req, res, next) => {
     await Otp.create({
       phone,
       code,
-      userName: owner?.name,
-      role: owner?.role || 'guest',
+      userName: req.body.name || owner?.name,
+      role: req.body.role || owner?.role || 'guest',
+      deliveryMethod: req.body.method === 'whatsapp' ? 'whatsapp' : 'sms',
       purpose: req.body.purpose === 'reset_password' ? 'reset_password' : 'register',
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // صلاحية 10 دقائق
     });
