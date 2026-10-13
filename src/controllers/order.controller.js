@@ -13,7 +13,7 @@ exports.createOrder = async (req, res, next) => {
     const {
       serviceCategory, serviceType, description,
       longitude, latitude, address, addressDetails, landmark, inspectionFee,
-      city, district,
+      city, district, neighborhood,
     } = req.body;
 
     const category = serviceCategory || serviceType;
@@ -45,6 +45,7 @@ exports.createOrder = async (req, res, next) => {
       },
       city: city || req.user.city,         // لقطة المنطقة للمطابقة الهرمية
       district: district || req.user.district,
+      neighborhood: neighborhood || req.user.neighborhood,
       financials: { inspectionFee: Number(inspectionFee) },
       status: 'pending_payment_proof',
     });

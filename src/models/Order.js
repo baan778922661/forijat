@@ -8,6 +8,7 @@ const orderSchema = new mongoose.Schema(
     // لقطة المنطقة وقت الإنشاء — المطابقة الهرمية مع الفني تعتمد عليها
     city: { type: String, trim: true },      // المحافظة
     district: { type: String, trim: true },  // المديرية
+    neighborhood: { type: String, trim: true }, // الحي / الشارع
     description: String,
     // GeoJSON Point — coordinates إلزامية هنا لذا default 'Point' آمن
     // (لا يُنشأ الكائن أبداً بدون إحداثيات من مسار إنشاء الطلب).
